@@ -1,0 +1,13 @@
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: harv-brain
+state:
+  energy: 0.8
+  mood: 0.6
+  curiosity: 0.5
+  trust: 0.7
+  fear: 0.2
+  engagement: 0.5
+loop_interval_ms: 200
+napgrade_hour: 3

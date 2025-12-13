@@ -66,25 +66,6 @@ He shouldn’t freeze or act randomly.
 
 ---
 
-## Repo Structure
-
-harv33/
-├── brain/
-│ ├── core/ # Behavior routing, intent + sentiment handling
-│ ├── state/ # Internal mood, memory, context machines
-│ └── utils/ # Helpers, formatting, abstractions
-├── psyche/ 
-│ └── character_sheet.md # Personality, boundaries, emotional rules
-├── protocol/ (planned)
-│ └── mqtt_contract.md # Body ↔ brain messaging
-└── README.md
-
-
-Most of this is early or forming.  
-This repo is mainly a thinking space that keeps me from losing the architecture again.
-
----
-
 ## Harv’s Architecture (Three Layers)
 
 ### 1. Local Reflex Layer (ESP32 + Edge Impulse)

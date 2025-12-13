@@ -1,0 +1,16 @@
+{
+  "excitability": 0.58,
+  "patience": 0.62,
+  "soothability": 0.7,
+  "energy_baseline": 0.55,
+  "energy_label": "steady",
+  "response_bias": {
+    "tone": "warm",
+    "pace": "measured",
+    "gesture": "small"
+  },
+  "decay": {
+    "stability": 0.55,
+    "volatility": 0.2
+  }
+}

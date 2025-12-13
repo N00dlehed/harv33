@@ -1,0 +1,12 @@
+{
+  "state": "soft",
+  "biases": ["playful", "cautious"],
+  "stability": 0.6,
+  "momentum": 0.5,
+  "last_shift": "2024-01-01T00:00:00Z",
+  "adjust_rules": {
+    "brighten_on_touch": 0.1,
+    "dim_on_threat": 0.15,
+    "recover_during_napgrade": 0.1
+  }
+}

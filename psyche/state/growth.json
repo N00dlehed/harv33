@@ -1,0 +1,13 @@
+{
+  "napgrade_count": 0,
+  "age_units": 0,
+  "last_napgrade": null,
+  "aging_rule": "16 napgrades = 1 age unit",
+  "targets": {
+    "confidence": 0.02,
+    "humility": 0.01,
+    "curiosity": 0.015,
+    "fear_decay": 0.01
+  },
+  "lesson_log": []
+}

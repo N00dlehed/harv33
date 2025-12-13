@@ -1,0 +1,16 @@
+{
+  "modules": {
+    "locomotion": "basic sway and forward steps",
+    "leds": "expressive patterns for mood",
+    "sensors": "imu, touch, light placeholders",
+    "camera": "snapshot publisher",
+    "speech_proxy": "LLM via external brain",
+    "napgrade": "scheduled nightly routine"
+  },
+  "maturity_level": 0.2,
+  "next_unlocks": [
+    "richer gestures",
+    "contextual vocalizations",
+    "bonding-aware responses"
+  ]
+}

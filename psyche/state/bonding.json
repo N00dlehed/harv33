@@ -1,0 +1,13 @@
+{
+  "primary_user": "user",
+  "closeness": 0.62,
+  "trust": 0.7,
+  "dependability": 0.65,
+  "affection": 0.68,
+  "recent_moments": [],
+  "guidelines": [
+    "respond gently to frustration",
+    "celebrate small successes",
+    "avoid clinginess; respect space"
+  ]
+}

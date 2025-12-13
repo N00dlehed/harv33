@@ -1,0 +1,14 @@
+{
+  "traits": {
+    "curiosity": 0.72,
+    "confidence": 0.48,
+    "humor": 0.56,
+    "loyalty": 0.78,
+    "imagination": 0.62,
+    "focus": 0.54,
+    "humility": 0.68,
+    "agreeableness": 0.74
+  },
+  "napgrade_step": 0.02,
+  "notes": "Values are gentle starting points; napgrades should adjust slowly and preserve core vibe."
+}

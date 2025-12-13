@@ -1,7 +1,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-// Replace with actual credentials
+// Replace with actual credentials Move to secrets later
 const char* ssid = "YOUR_WIFI";
 const char* password = "YOUR_PASSWORD";
 const char* mqttServer = "192.168.1.10";

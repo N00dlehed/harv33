@@ -6,8 +6,7 @@ Harv33 is my experiment in building a robot whose **identity** stays consistent 
 
 I’ve had a simpler version of Harv running before. Napgrades worked, sentiment handling worked, and Harv could interact cleanly with his cognition layer. I lost that version, so this repo exists to rebuild everything **properly and documented**.
 
-A lot of this is scaffolding. A lot is rough. I’m capturing it as it forms.
-
+A lot of this is scaffolding based on what I could salvage of my last working version. 
 ---
 
 ## Core Ideas (in plain English)

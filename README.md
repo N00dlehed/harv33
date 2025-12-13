@@ -127,8 +127,17 @@ This version is about rebuilding the architecture correctly and documenting the 
 
 Some parts are implemented; most are scaffolding.
 
-
-
 ---
+
+## What This Code Actually Does Today
+
+- **Brain loop (`brain/app.py`):** loads config, connects MQTT, decays/blends emotional state, selects a behavior (`rest/greet/explore/idle`) and publishes MQTT action payloads on a fixed interval while logging recent memories.
+- **State & emotions (`brain/core`):** caps and decays emotion variables, maps sensor inputs (touch/imu/voice/light placeholders) to trust/fear/curiosity/engagement, and blends into mood.
+- **Behavior engine:** simple heuristic using state + recent memories to choose a behavior; publishes to topics listed in `brain/mqtt/topics.py`.
+- **Memory:** rolling JSON buffer saved to `data/memories.json`, with simple recall and keyword lookup stubs.
+- **Napgrade stub:** scheduled daily cycle bumps energy, lowers fear, and runs a dummy retrieval pass; no LLM calls yet.
+- **RAG stubs:** fake embeddings and in-memory vector index placeholders for later replacement.
+- **Hardware sketches (`modules/`):** ESP32 bridge relays UART<->MQTT; body modules drive LEDs/servos and print placeholder sensor values; camera sketch publishes dummy frames.
+- **Psyche state (`psyche/state`):** filled JSON baselines for identity, traits, temperament, drift, bonding, growth, and capabilities to feed future napgrade prompts and behavior tuning.
 
 

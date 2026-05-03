@@ -2,6 +2,7 @@ import json
 import os
 import time
 import random
+import paho.mqtt.client as mqtt
 
 MEMORY_FILE  = "/home/admin/harv_memory.json"
 DRIFT_FILE   = "/home/admin/psyche/drift.json"
@@ -163,6 +164,22 @@ def run_napgrade():
     print(f"Confidence:{psyche['confidence']:.2f}")
     print(f"Curiosity: {psyche['curiosity']:.2f}")
     print(f"Baseline:  {drift['baseline_drift']}")
+
+    # Publish wakeup payload to WROVER
+    wakeup = {
+        "energy":     psyche.get("energy", 0.55),
+        "warmth":     psyche.get("warmth", 0.68),
+        "curiosity":  psyche.get("curiosity", 0.72),
+        "confidence": psyche.get("confidence", 0.48),
+        "maturity":   psyche.get("maturity", 0.20),
+        "baseline":   drift.get("baseline_drift", "idle"),
+        "napgrades":  psyche.get("napgrades", 0)
+    }
+    mqttc = mqtt.Client()
+    mqttc.connect("localhost", 1883, 60)
+    mqttc.publish("harv/wakeup", json.dumps(wakeup))
+    mqttc.disconnect()
+    print(f"Wakeup published: {wakeup}")
 
 if __name__ == "__main__":
     run_napgrade()

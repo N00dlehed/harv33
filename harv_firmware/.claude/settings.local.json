@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Program Files/Arduino IDE/**)",
+      "Read(//c/Users/callm/AppData/Local/**)",
+      "Bash(\"/c/Program Files/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe\" version)"
+    ]
+  }
+}

@@ -3,6 +3,7 @@ import os
 import time
 import random
 import paho.mqtt.client as mqtt
+from harv_brain import ask_harv, log_journal_entry
 
 MEMORY_FILE  = "/home/admin/harv_memory.json"
 DRIFT_FILE   = "/home/admin/psyche/drift.json"
@@ -180,6 +181,10 @@ def run_napgrade():
     mqttc.publish("harv/wakeup", json.dumps(wakeup))
     mqttc.disconnect()
     print(f"Wakeup published: {wakeup}")
+
+    resp = ask_harv("napgrade_wakeup", psyche, drift)
+    if resp:
+        log_journal_entry("napgrade_wakeup", resp)
 
 if __name__ == "__main__":
     run_napgrade()

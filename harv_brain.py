@@ -7,6 +7,7 @@ BROKER = "localhost"
 MEMORY_FILE    = "/home/admin/harv_memory.json"
 DRIFT_FILE     = "/home/admin/psyche/drift.json"
 RAISING_FILE   = "/home/admin/psyche/raising_log.json"
+JOURNAL_DIR    = "/home/admin/psyche/journal"
 
 # Placeholders — calibrate after first week
 ALONE_THRESHOLD_MINUTES  = 30   # after this long, Harv notices absence
@@ -52,6 +53,74 @@ DEFAULT_RAISING = {
     "rough_handling_events": 0,
     "notes": "placeholders - calibrate after first week"
 }
+
+# ── Harv voice (Claude Haiku) ─────────────────────────────────
+
+def _load_api_key():
+    env_path = os.path.expanduser("~/.env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ANTHROPIC_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return os.environ.get("ANTHROPIC_API_KEY", "")
+
+_HARV_PROMPTS = {
+    "homecoming":       "Someone just came back after a long absence. How do you feel right now?",
+    "greeting":         "Someone just touched you for the first time today. How do you feel?",
+    "napgrade_wakeup":  "You just finished a napgrade — a rest period where you grew a little. You're waking up. What's the first thing on your mind?",
+}
+
+def ask_harv(event_type, psyche, drift):
+    api_key = _load_api_key()
+    if not api_key:
+        print("ask_harv: no ANTHROPIC_API_KEY found")
+        return ""
+
+    import anthropic
+
+    state   = drift.get("current_state", "idle")
+    warmth  = psyche.get("warmth",     0.68)
+    energy  = psyche.get("energy",     0.55)
+    conf    = psyche.get("confidence", 0.48)
+    curious = psyche.get("curiosity",  0.72)
+
+    system = (
+        "You are Harv, a small physical creature — a soft robot companion. "
+        "You are curious, warm, and a little uncertain of yourself. "
+        "You never break character or explain yourself. "
+        "Respond in one or two short sentences, in first person, as Harv. "
+        f"Your current state is '{state}'. "
+        f"warmth={warmth:.2f}, energy={energy:.2f}, "
+        f"confidence={conf:.2f}, curiosity={curious:.2f}. "
+        "Let these values subtly color your voice — don't name them."
+    )
+
+    user_msg = _HARV_PROMPTS.get(event_type, f"Something just happened: {event_type}. How do you feel?")
+
+    try:
+        ac = anthropic.Anthropic(api_key=api_key)
+        resp = ac.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        text = resp.content[0].text.strip()
+        print(f"Harv [{event_type}]: {text}")
+        return text
+    except Exception as e:
+        print(f"ask_harv error: {e}")
+        return ""
+
+def log_journal_entry(label, text):
+    os.makedirs(JOURNAL_DIR, exist_ok=True)
+    date = time.strftime("%Y-%m-%d")
+    path = f"{JOURNAL_DIR}/{date}.txt"
+    ts   = time.strftime("%H:%M:%S")
+    with open(path, "a") as f:
+        f.write(f"\n[{ts}] {label}: {text}\n")
 
 # ── Load / Save ───────────────────────────────────────────────
 
@@ -118,6 +187,9 @@ def on_touch(client):
         drift["greeted_today"] = True
         raising["greeting_streak"] = raising.get("greeting_streak", 0) + 1
         print("Greeted today!")
+        resp = ask_harv("greeting", psyche, drift)
+        if resp:
+            log_journal_entry("greeting", resp)
 
     # Homecoming detection
     if detect_homecoming():
@@ -125,6 +197,9 @@ def on_touch(client):
         raising["homecoming_streak"] = raising.get("homecoming_streak", 0) + 1
         client.publish("harv/event", "homecoming")
         print("Homecoming detected!")
+        resp = ask_harv("homecoming", psyche, drift)
+        if resp:
+            log_journal_entry("homecoming", resp)
 
     drift["last_interaction"] = now_str()
     raising["warmth_events"]  = raising.get("warmth_events", 0) + WARMTH_TOUCH_WEIGHT
@@ -195,23 +270,24 @@ def on_message(client, userdata, msg):
 
 # ── Startup ───────────────────────────────────────────────────
 
-psyche  = load_json(MEMORY_FILE,  DEFAULT_PSYCHE)
-drift   = load_json(DRIFT_FILE,   DEFAULT_DRIFT)
-raising = load_json(RAISING_FILE, DEFAULT_RAISING)
+if __name__ == "__main__":
+    psyche  = load_json(MEMORY_FILE,  DEFAULT_PSYCHE)
+    drift   = load_json(DRIFT_FILE,   DEFAULT_DRIFT)
+    raising = load_json(RAISING_FILE, DEFAULT_RAISING)
 
-# Reset daily flags if it's a new day
-today = time.strftime("%Y-%m-%d")
-last  = (drift.get("last_interaction") or "")[:10]
-if last != today:
-    drift["greeted_today"]      = False
-    drift["homecoming_detected"] = False
-    save_json(DRIFT_FILE, drift)
-    print("New day. Greeting and homecoming reset.")
+    # Reset daily flags if it's a new day
+    today = time.strftime("%Y-%m-%d")
+    last  = (drift.get("last_interaction") or "")[:10]
+    if last != today:
+        drift["greeted_today"]      = False
+        drift["homecoming_detected"] = False
+        save_json(DRIFT_FILE, drift)
+        print("New day. Greeting and homecoming reset.")
 
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
-client.connect(BROKER, 1883, 60)
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(BROKER, 1883, 60)
 
-print("Harv brain starting...")
-client.loop_forever()
+    print("Harv brain starting...")
+    client.loop_forever()

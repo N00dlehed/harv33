@@ -1,0 +1,10 @@
+{
+  "age_unit": 0,
+  "warmth_events": 45,
+  "stress_events": 24,
+  "presence_minutes": 30,
+  "greeting_streak": 1,
+  "homecoming_streak": 1,
+  "rough_handling_events": 12,
+  "notes": "placeholders - calibrate after first week with Harv"
+}

@@ -1,0 +1,14 @@
+{
+  "current_state": "idle",
+  "baseline_drift": "warm",
+  "warmth_score": 0,
+  "stress_score": 0,
+  "presence_minutes": 0,
+  "last_interaction": "2026-05-03T11:59:33",
+  "alone_since": null,
+  "greeted_today": true,
+  "homecoming_detected": true,
+  "age_unit": 0,
+  "napgrade_count": 0,
+  "drift_history": []
+}

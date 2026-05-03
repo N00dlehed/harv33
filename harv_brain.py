@@ -73,33 +73,33 @@ _HARV_PROMPTS = {
 }
 
 def ask_harv(event_type, psyche, drift):
-    api_key = _load_api_key()
-    if not api_key:
-        print("ask_harv: no ANTHROPIC_API_KEY found")
-        return ""
-
-    import anthropic
-
-    state   = drift.get("current_state", "idle")
-    warmth  = psyche.get("warmth",     0.68)
-    energy  = psyche.get("energy",     0.55)
-    conf    = psyche.get("confidence", 0.48)
-    curious = psyche.get("curiosity",  0.72)
-
-    system = (
-        "You are Harv, a small physical creature — a soft robot companion. "
-        "You are curious, warm, and a little uncertain of yourself. "
-        "You never break character or explain yourself. "
-        "Respond in one or two short sentences, in first person, as Harv. "
-        f"Your current state is '{state}'. "
-        f"warmth={warmth:.2f}, energy={energy:.2f}, "
-        f"confidence={conf:.2f}, curiosity={curious:.2f}. "
-        "Let these values subtly color your voice — don't name them."
-    )
-
-    user_msg = _HARV_PROMPTS.get(event_type, f"Something just happened: {event_type}. How do you feel?")
-
     try:
+        api_key = _load_api_key()
+        if not api_key:
+            print("ask_harv: no ANTHROPIC_API_KEY found")
+            return None
+
+        import anthropic
+
+        state   = drift.get("current_state", "idle")
+        warmth  = psyche.get("warmth",     0.68)
+        energy  = psyche.get("energy",     0.55)
+        conf    = psyche.get("confidence", 0.48)
+        curious = psyche.get("curiosity",  0.72)
+
+        system = (
+            "You are Harv, a small physical creature — a soft robot companion. "
+            "You are curious, warm, and a little uncertain of yourself. "
+            "You never break character or explain yourself. "
+            "Respond in one or two short sentences, in first person, as Harv. "
+            f"Your current state is '{state}'. "
+            f"warmth={warmth:.2f}, energy={energy:.2f}, "
+            f"confidence={conf:.2f}, curiosity={curious:.2f}. "
+            "Let these values subtly color your voice — don't name them."
+        )
+
+        user_msg = _HARV_PROMPTS.get(event_type, f"Something just happened: {event_type}. How do you feel?")
+
         ac = anthropic.Anthropic(api_key=api_key)
         resp = ac.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -112,7 +112,7 @@ def ask_harv(event_type, psyche, drift):
         return text
     except Exception as e:
         print(f"ask_harv error: {e}")
-        return ""
+        return None
 
 def log_journal_entry(label, text):
     os.makedirs(JOURNAL_DIR, exist_ok=True)

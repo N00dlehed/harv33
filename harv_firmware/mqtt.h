@@ -19,7 +19,9 @@ void applyMood(const String& mood);
 // ── Credential wipe ───────────────────────────────────────────
 
 void wipeAndProvision() {
+  WiFi.disconnect(true, true);   // erase NVS credentials
   wifiManager.resetSettings();
+  delay(500);
   ESP.restart();
 }
 
@@ -28,14 +30,20 @@ void wipeAndProvision() {
 
 void checkPhysicalReset() {
   pinMode(RESET_PIN, INPUT_PULLUP);
+  delay(100);  // let pin settle after boot
+  Serial.print("[reset] GPIO0=");
+  Serial.println(digitalRead(RESET_PIN));
   if (digitalRead(RESET_PIN) != LOW) return;
+  Serial.println("[reset] button held — waiting 3s...");
   unsigned long held = millis();
   while (digitalRead(RESET_PIN) == LOW) {
     if (millis() - held >= RESET_HOLD_MS) {
+      Serial.println("[reset] wiping credentials");
       wipeAndProvision();   // does not return
     }
     delay(50);
   }
+  Serial.println("[reset] released early, continuing");
 }
 
 // ── mDNS resolution ───────────────────────────────────────────

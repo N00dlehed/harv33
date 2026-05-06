@@ -1,30 +1,68 @@
 #pragma once
 #include <WiFi.h>
+#include <WiFiManager.h>   // tzapu/WiFiManager
+#include <ESPmDNS.h>
 #include <PubSubClient.h>
 #include "psyche.h"
 #include "led.h"
 
-#define WIFI_SSID     "Is This The Krusty Crab"
-#define WIFI_PASSWORD "pinkdogs123"
-#define MQTT_SERVER   "10.0.0.95"
-#define MQTT_PORT     1883
+#define MQTT_PORT      1883
+#define RESET_PIN      0        // GPIO0 / BOOT button
+#define RESET_HOLD_MS  3000
 
-WiFiClient wifiClient;
+WiFiClient   wifiClient;
 PubSubClient mqtt(wifiClient);
+WiFiManager  wifiManager;
 
 void applyMood(const String& mood);
 
+// ── Credential wipe ───────────────────────────────────────────
+
+void wipeAndProvision() {
+  wifiManager.resetSettings();
+  ESP.restart();
+}
+
+// ── Physical reset (hold GPIO0 LOW ≥3 s on boot) ──────────────
+// Call once from setup(), before MQTT::connect().
+
+void checkPhysicalReset() {
+  pinMode(RESET_PIN, INPUT_PULLUP);
+  if (digitalRead(RESET_PIN) != LOW) return;
+  unsigned long held = millis();
+  while (digitalRead(RESET_PIN) == LOW) {
+    if (millis() - held >= RESET_HOLD_MS) {
+      wipeAndProvision();   // does not return
+    }
+    delay(50);
+  }
+}
+
+// ── mDNS resolution ───────────────────────────────────────────
+
+IPAddress _mqttServerIP;
+
+bool resolveMqttServer() {
+  for (int i = 0; i < 10; i++) {
+    if (WiFi.hostByName("harv.local", _mqttServerIP)) return true;
+    delay(300);
+  }
+  return false;
+}
+
+// ── MQTT message handler ──────────────────────────────────────
+
 void onMessage(char* topic, byte* payload, unsigned int length) {
-  String t = String(topic);
+  String t   = String(topic);
   String msg = "";
-  for (int i = 0; i < length; i++) msg += (char)payload[i];
+  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
 
   if (t == "harv/mood") {
     applyMood(msg);
   }
   if (t == "harv/drift") {
-    if (msg.indexOf("bright") > 0)       applyMood("bright");
-    else if (msg.indexOf("dim") > 0)     applyMood("dim");
+    if      (msg.indexOf("bright")  > 0) applyMood("bright");
+    else if (msg.indexOf("dim")     > 0) applyMood("dim");
     else if (msg.indexOf("anxious") > 0) applyMood("anxious");
   }
   if (t == "harv/psyche") {
@@ -40,32 +78,63 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   if (t == "harv/wakeup") {
     handleWakeup(msg);
   }
+  if (t == "harv/cmd") {
+    if (msg == "reset_wifi") wipeAndProvision();
+  }
 }
 
+// ── MQTT namespace ────────────────────────────────────────────
+
 namespace MQTT {
-  void connect() {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) delay(500);
-    mqtt.setServer(MQTT_SERVER, MQTT_PORT);
-    mqtt.setCallback(onMessage);
-    while (!mqtt.connected()) {
-      mqtt.connect("harv-body");
-      delay(500);
-    }
+
+  void _subscribeMqtt() {
     mqtt.subscribe("harv/mood");
     mqtt.subscribe("harv/psyche");
     mqtt.subscribe("harv/drift");
     mqtt.subscribe("harv/event");
     mqtt.subscribe("harv/wakeup");
+    mqtt.subscribe("harv/cmd");
+  }
+
+  // Reconnect MQTT only — assumes WiFi is already up.
+  void _connectMqtt() {
+    if (_mqttServerIP == IPAddress(0, 0, 0, 0)) {
+      if (!resolveMqttServer()) return;   // broker unreachable
+      mqtt.setServer(_mqttServerIP, MQTT_PORT);
+      mqtt.setCallback(onMessage);
+    }
+    int attempts = 0;
+    while (!mqtt.connected() && attempts++ < 5) {
+      mqtt.connect("harv-body");
+      delay(500);
+    }
+    if (mqtt.connected()) _subscribeMqtt();
+  }
+
+  // Full init: captive portal provisioning then MQTT.
+  // Call once from setup() (after checkPhysicalReset()).
+  void connect() {
+    wifiManager.setConfigPortalTimeout(300);   // 5-min portal timeout
+    if (!wifiManager.autoConnect("Harv-Setup")) {
+      // Timed out without credentials — restart and try again.
+      ESP.restart();
+    }
+    _connectMqtt();
   }
 
   void publish(const char* topic, const char* payload) {
-    if (!mqtt.connected()) connect();
+    if (!mqtt.connected()) _connectMqtt();
     mqtt.publish(topic, payload);
   }
 
   void loop() {
-    if (!mqtt.connected()) connect();
+    if (WiFi.status() != WL_CONNECTED) {
+      // WiFi dropped — re-provision.
+      connect();
+      return;
+    }
+    if (!mqtt.connected()) _connectMqtt();
     mqtt.loop();
   }
+
 }

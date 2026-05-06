@@ -156,6 +156,7 @@ void setup() {
   delay(300);
   roboEyes.open();
 
+  checkPhysicalReset();
   MQTT::connect();
 
   LED::setState("warm");

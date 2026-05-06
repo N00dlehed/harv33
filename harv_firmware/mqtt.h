@@ -14,7 +14,7 @@
 WiFiClient          wifiClient;
 PubSubClient        mqtt(wifiClient);
 WiFiManager         wifiManager;
-DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
+DoubleResetDetector* drd = nullptr;
 
 void applyMood(const String& mood);
 
@@ -38,7 +38,7 @@ void _drdFlashBlue(unsigned long durationMs) {
     unsigned long phase = (millis() - start) % 200;
     led.setPixelColor(0, phase < 100 ? led.Color(0, 0, 255) : led.Color(0, 0, 0));
     led.show();
-    drd.loop();
+    drd->loop();
     delay(20);
   }
   led.setPixelColor(0, led.Color(0, 0, 0));
@@ -46,13 +46,14 @@ void _drdFlashBlue(unsigned long durationMs) {
 }
 
 void checkDoubleReset() {
-  if (drd.detectDoubleReset()) {
+  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
+  if (drd->detectDoubleReset()) {
     Serial.println("[drd] double reset — wiping WiFi credentials");
     wipeAndProvision();  // does not return
   }
   Serial.println("[drd] window open — reset again within 10s to enter setup");
   _drdFlashBlue(DRD_TIMEOUT * 1000UL);
-  drd.stop();
+  drd->stop();
   Serial.println("[drd] window closed, continuing boot");
 }
 

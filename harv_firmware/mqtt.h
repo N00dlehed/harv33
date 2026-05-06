@@ -7,8 +7,6 @@
 #include "led.h"
 
 #define MQTT_PORT      1883
-#define RESET_PIN      0        // GPIO0 / BOOT button
-#define RESET_HOLD_MS  3000
 
 WiFiClient   wifiClient;
 PubSubClient mqtt(wifiClient);
@@ -29,21 +27,14 @@ void wipeAndProvision() {
 // Call once from setup(), before MQTT::connect().
 
 void checkPhysicalReset() {
-  pinMode(RESET_PIN, INPUT_PULLUP);
-  delay(100);  // let pin settle after boot
-  Serial.print("[reset] GPIO0=");
-  Serial.println(digitalRead(RESET_PIN));
-  if (digitalRead(RESET_PIN) != LOW) return;
-  Serial.println("[reset] button held — waiting 3s...");
-  unsigned long held = millis();
-  while (digitalRead(RESET_PIN) == LOW) {
-    if (millis() - held >= RESET_HOLD_MS) {
-      Serial.println("[reset] wiping credentials");
-      wipeAndProvision();   // does not return
-    }
+  Serial.println("[reset] hold touch sensor for 5s to reset WiFi...");
+  unsigned long start = millis();
+  while (millis() - start < 5000) {
+    if (touchRead(T0) > 40) return;  // released early
     delay(50);
   }
-  Serial.println("[reset] released early, continuing");
+  Serial.println("[reset] wiping WiFi credentials");
+  wipeAndProvision();
 }
 
 // ── mDNS resolution ───────────────────────────────────────────

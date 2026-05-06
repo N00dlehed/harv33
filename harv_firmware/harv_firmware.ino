@@ -134,8 +134,6 @@ void doIdleBehavior() {
 
 void setup() {
   Serial.begin(115200);
-  checkPhysicalReset();   // must be first — checks GPIO0 before anything else
-
   Wire.begin(21, 22);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {

@@ -1,16 +1,20 @@
 #pragma once
 #include <WiFi.h>
-#include <WiFiManager.h>   // tzapu/WiFiManager
+#include <WiFiManager.h>          // tzapu/WiFiManager
 #include <ESPmDNS.h>
 #include <PubSubClient.h>
+#include <ESP_DoubleResetDetector.h>  // khoih-prog/ESP_DoubleResetDetector
 #include "psyche.h"
 #include "led.h"
 
-#define MQTT_PORT      1883
+#define MQTT_PORT     1883
+#define DRD_TIMEOUT   10     // seconds — reset twice within this window to trigger
+#define DRD_ADDRESS   0      // RTC memory address for DRD flag
 
-WiFiClient   wifiClient;
-PubSubClient mqtt(wifiClient);
-WiFiManager  wifiManager;
+WiFiClient          wifiClient;
+PubSubClient        mqtt(wifiClient);
+WiFiManager         wifiManager;
+DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
 
 void applyMood(const String& mood);
 
@@ -23,18 +27,33 @@ void wipeAndProvision() {
   ESP.restart();
 }
 
-// ── Physical reset (hold GPIO0 LOW ≥3 s on boot) ──────────────
-// Call once from setup(), before MQTT::connect().
+// ── Double-reset detection ────────────────────────────────────
+// Call once from MQTT::connect() after LED::begin().
+// First reset: flashes blue for DRD_TIMEOUT seconds as a hint.
+// Second reset within that window: wipes credentials and provisions.
 
-void checkPhysicalReset() {
-  Serial.println("[reset] hold touch sensor for 5s to reset WiFi...");
+void _drdFlashBlue(unsigned long durationMs) {
   unsigned long start = millis();
-  while (millis() - start < 5000) {
-    if (touchRead(T0) > 40) return;  // released early
-    delay(50);
+  while (millis() - start < durationMs) {
+    unsigned long phase = (millis() - start) % 200;
+    led.setPixelColor(0, phase < 100 ? led.Color(0, 0, 255) : led.Color(0, 0, 0));
+    led.show();
+    drd.loop();
+    delay(20);
   }
-  Serial.println("[reset] wiping WiFi credentials");
-  wipeAndProvision();
+  led.setPixelColor(0, led.Color(0, 0, 0));
+  led.show();
+}
+
+void checkDoubleReset() {
+  if (drd.detectDoubleReset()) {
+    Serial.println("[drd] double reset — wiping WiFi credentials");
+    wipeAndProvision();  // does not return
+  }
+  Serial.println("[drd] window open — reset again within 10s to enter setup");
+  _drdFlashBlue(DRD_TIMEOUT * 1000UL);
+  drd.stop();
+  Serial.println("[drd] window closed, continuing boot");
 }
 
 // ── mDNS resolution ───────────────────────────────────────────
@@ -110,9 +129,10 @@ namespace MQTT {
     if (mqtt.connected()) _subscribeMqtt();
   }
 
-  // Full init: captive portal provisioning then MQTT.
-  // Call once from setup() (after checkPhysicalReset()).
+  // Full init: double-reset check, captive portal provisioning, then MQTT.
+  // Call once from setup() after LED::begin().
   void connect() {
+    checkDoubleReset();
     wifiManager.setConfigPortalTimeout(300);   // 5-min portal timeout
     if (!wifiManager.autoConnect("Harv-Setup")) {
       // Timed out without credentials — restart and try again.

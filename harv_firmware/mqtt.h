@@ -3,13 +3,15 @@
 #include <WiFiManager.h>          // tzapu/WiFiManager
 #include <ESPmDNS.h>
 #include <PubSubClient.h>
+#define ESP_DRD_USE_EEPROM   true
+#define DOUBLERESETDETECTOR_DEBUG false
 #include <ESP_DoubleResetDetector.h>  // khoih-prog/ESP_DoubleResetDetector
 #include "psyche.h"
 #include "led.h"
 
 #define MQTT_PORT     1883
 #define DRD_TIMEOUT   10     // seconds — reset twice within this window to trigger
-#define DRD_ADDRESS   0      // RTC memory address for DRD flag
+#define DRD_ADDRESS   0      // EEPROM address for DRD flag
 
 WiFiClient          wifiClient;
 PubSubClient        mqtt(wifiClient);

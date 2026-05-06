@@ -18,6 +18,7 @@
 #include "mqtt.h"
 #include "imu.h"
 #include "led.h"
+#include "cloud.h"
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 RoboEyes<Adafruit_SSD1306> roboEyes(display);
@@ -157,6 +158,7 @@ void setup() {
   roboEyes.open();
 
   MQTT::connect();
+  Cloud::begin();
 
   LED::setState("warm");
   delay(500);
@@ -176,6 +178,7 @@ void loop() {
   roboEyes.update();
   LED::update();
   MQTT::loop();
+  Cloud::update();
 
   unsigned long now = millis();
 

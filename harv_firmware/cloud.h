@@ -4,18 +4,22 @@
 #include "psyche.h"
 #include "cloud_secrets.h"  // gitignored — copy cloud_secrets.h.example to create
 
-// ── Cloud variables ───────────────────────────────────────────
-String cloudMood;           // READWRITE — calls applyMood on change
-bool   cloudNapgrade  = false; // READWRITE — publishes run_napgrade to harv/cmd
-bool   cloudResetWifi = false; // READWRITE — wipes credentials and re-provisions
-String cloudStatus;         // READ — mood + psyche summary, refreshed every 30s
+// ── Device identity (from cloud_secrets.h) ────────────────────
+const char DEVICE_LOGIN_NAME[] = SECRET_DEVICE_ID;
+const char DEVICE_KEY[]        = SECRET_DEVICE_KEY;
 
-// ── Forward declarations (defined in harv_firmware.ino / mqtt.h) ──
+// ── Forward declarations ───────────────────────────────────────
 void applyMood(const String& mood);
 void wipeAndProvision();
-extern String     currentMood;
+extern String      currentMood;
 extern WiFiManager wifiManager;
 namespace MQTT { void publish(const char* topic, const char* payload); }
+
+// ── Cloud variables ───────────────────────────────────────────
+String cloudMood;
+String cloudStatus;
+bool   cloudNapgrade  = false;
+bool   cloudResetWifi = false;
 
 // ── Callbacks ─────────────────────────────────────────────────
 
@@ -24,6 +28,10 @@ void onCloudMoodChange() {
     Serial.println("[cloud] mood → " + cloudMood);
     applyMood(cloudMood);
   }
+}
+
+void onCloudStatusChange() {
+  // cloudStatus is written by the device — ignore inbound changes
 }
 
 void onCloudNapgradeChange() {
@@ -41,36 +49,40 @@ void onCloudResetWifiChange() {
   }
 }
 
-// ── Cloud namespace ───────────────────────────────────────────
+// ── Connection handler (populated after WiFiManager connects) ──
+WiFiConnectionHandler* ArduinoIoTPreferredConnection = nullptr;
 
+// ── Init (mirrors Arduino Cloud generated pattern) ────────────
+void initProperties() {
+  ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
+  ArduinoCloud.setSecretDeviceKey(DEVICE_KEY);
+  ArduinoCloud.addProperty(cloudMood,       READWRITE, ON_CHANGE, onCloudMoodChange);
+  ArduinoCloud.addProperty(cloudStatus,     READWRITE, ON_CHANGE, onCloudStatusChange);
+  ArduinoCloud.addProperty(cloudNapgrade,   READWRITE, ON_CHANGE, onCloudNapgradeChange);
+  ArduinoCloud.addProperty(cloudResetWifi,  READWRITE, ON_CHANGE, onCloudResetWifiChange);
+}
+
+// ── Cloud namespace ───────────────────────────────────────────
 namespace Cloud {
 
-  WiFiConnectionHandler* _handler  = nullptr;
-  unsigned long          _lastStatus = 0;
+  unsigned long _lastStatus = 0;
 
   void begin() {
-    // Borrow credentials WiFiManager already saved — WiFi is already up
-    _handler = new WiFiConnectionHandler(
+    // WiFiManager has already connected — borrow its credentials
+    // so ArduinoCloud can reconnect if WiFi drops
+    ArduinoIoTPreferredConnection = new WiFiConnectionHandler(
       wifiManager.getWiFiSSID().c_str(),
       wifiManager.getWiFiPass().c_str()
     );
-
-    ArduinoCloud.setDeviceId(DEVICE_ID);
-    ArduinoCloud.setSecretDeviceKey(CLOUD_DEVICE_KEY);
-    ArduinoCloud.setThingId(THING_ID);
-
-    ArduinoCloud.addProperty(cloudMood,       READWRITE, ON_CHANGE,   onCloudMoodChange);
-    ArduinoCloud.addProperty(cloudNapgrade,   READWRITE, ON_CHANGE,   onCloudNapgradeChange);
-    ArduinoCloud.addProperty(cloudResetWifi,  READWRITE, ON_CHANGE,   onCloudResetWifiChange);
-    ArduinoCloud.addProperty(cloudStatus,     READ,      30 * SECONDS);
-
-    ArduinoCloud.begin(*_handler);
+    initProperties();
+    ArduinoCloud.begin(*ArduinoIoTPreferredConnection);
     Serial.println("[cloud] Arduino IoT Cloud initialized");
   }
 
   void update() {
     ArduinoCloud.update();
 
+    // Push mood + psyche summary to cloudStatus every 30s
     unsigned long now = millis();
     if (now - _lastStatus >= 30000) {
       cloudStatus = currentMood + " | " + Psyche::summary();

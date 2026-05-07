@@ -87,6 +87,26 @@ void applyMood(const String& mood) {
   }
 }
 
+void handleEmotion(const String& json) {
+  StaticJsonDocument<128> doc;
+  if (deserializeJson(doc, json) != DeserializationError::Ok) return;
+
+  // LED color / mood
+  if (doc.containsKey("led")) {
+    applyMood(doc["led"].as<String>());
+  }
+
+  // Face expression
+  if (doc.containsKey("face")) {
+    String face = doc["face"].as<String>();
+    if      (face == "happy")   roboEyes.setMood(HAPPY);
+    else if (face == "angry")   roboEyes.setMood(ANGRY);
+    else if (face == "tired")   roboEyes.setMood(TIRED);
+    else if (face == "default") roboEyes.setMood(DEFAULT);
+    else                        roboEyes.setMood(DEFAULT);
+  }
+}
+
 void doIdleBehavior() {
   if (Psyche::isSleepy()) {
     debugState("idle: sleepy");

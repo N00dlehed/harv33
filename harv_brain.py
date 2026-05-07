@@ -463,6 +463,32 @@ def on_presence_tick(client):
     save_psyche()
     publish_drift(client)
 
+# ── Simulated events ──────────────────────────────────────────
+
+def on_sim_pet(client):
+    """10 touches, 3 seconds apart — runs in its own thread."""
+    def _pet():
+        print("Pet session starting (10 touches × 3s)")
+        for i in range(10):
+            on_touch(client)
+            print(f"  pet touch {i + 1}/10")
+            time.sleep(3)
+        print("Pet session complete")
+    threading.Thread(target=_pet, daemon=True).start()
+
+def _run_napgrade():
+    """Run napgrade.py as a subprocess."""
+    import subprocess
+    print("Running napgrade...")
+    result = subprocess.run(
+        ["python3", "/home/admin/napgrade.py"],
+        capture_output=True, text=True
+    )
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(f"napgrade stderr: {result.stderr}")
+
 # ── MQTT ──────────────────────────────────────────────────────
 
 def on_connect(client, userdata, flags, rc):
@@ -477,8 +503,15 @@ def on_message(client, userdata, msg):
 
     if topic == "harv/touch":
         on_touch(client)
+    elif topic == "harv/sim/touch":
+        on_touch(client)
+    elif topic == "harv/sim/pet":
+        on_sim_pet(client)
     elif topic == "harv/motion":
         on_motion(client, payload)
+    elif topic == "harv/cmd":
+        if payload == "run_napgrade":
+            threading.Thread(target=_run_napgrade, daemon=True).start()
     elif topic == "harv/status":
         print(f"Body status: {payload}")
         if payload == "online":

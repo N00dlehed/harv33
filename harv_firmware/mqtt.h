@@ -102,6 +102,9 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   if (t == "harv/cmd") {
     if (msg == "reset_wifi") wipeAndProvision();
   }
+  if (t == "harv/emotion") {
+    handleEmotion(msg);
+  }
 }
 
 // ── MQTT namespace ────────────────────────────────────────────
@@ -115,6 +118,7 @@ namespace MQTT {
     mqtt.subscribe("harv/event");
     mqtt.subscribe("harv/wakeup");
     mqtt.subscribe("harv/cmd");
+    mqtt.subscribe("harv/emotion");
   }
 
   // Reconnect MQTT only — assumes WiFi is already up.

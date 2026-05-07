@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <ArduinoOTA.h>
 
 #include <FluxGarage_RoboEyes.h>
 #undef ON
@@ -162,6 +163,11 @@ void setup() {
   MQTT::connect();
   Cloud::begin();
 
+  ArduinoOTA.setHostname("harv");
+  ArduinoOTA.setPassword("harv123");
+  ArduinoOTA.begin();
+  Serial.println("OTA ready");
+
   LED::setState("warm");
   delay(500);
   roboEyes.setMood(HAPPY);
@@ -177,6 +183,7 @@ void setup() {
 }
 
 void loop() {
+  ArduinoOTA.handle();
   roboEyes.update();
   LED::update();
   MQTT::loop();

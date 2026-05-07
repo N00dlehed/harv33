@@ -3,6 +3,8 @@
 #include <Adafruit_SSD1306.h>
 
 #include <FluxGarage_RoboEyes.h>
+#undef ON
+#undef OFF
 #undef N
 #undef NE
 #undef E

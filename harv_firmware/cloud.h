@@ -2,11 +2,7 @@
 #include <ArduinoIoTCloud.h>
 #include <Arduino_ConnectionHandler.h>
 #include "psyche.h"
-
-// ── Fill these in after creating your Thing on Arduino Cloud ──
-#define THING_ID         "YOUR-THING-ID-HERE"
-#define DEVICE_ID        "YOUR-DEVICE-ID-HERE"
-#define CLOUD_DEVICE_KEY "YOUR-SECRET-KEY-HERE"
+#include "cloud_secrets.h"  // gitignored — copy cloud_secrets.h.example to create
 
 // ── Cloud variables ───────────────────────────────────────────
 String cloudMood;           // READWRITE — calls applyMood on change

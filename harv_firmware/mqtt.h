@@ -19,6 +19,7 @@ WiFiManager         wifiManager;
 DoubleResetDetector* drd = nullptr;
 
 void applyMood(const String& mood);
+void handleEmotion(const String& json);
 
 // ── Credential wipe ───────────────────────────────────────────
 

@@ -118,11 +118,12 @@ def load_psyche():
         return merged
     return copy.deepcopy(DEFAULT_PSYCHE)
 
-def save_psyche():
-    p["identity"]["last_seen"] = now_str()
+def save_psyche(psyche=None):
+    target = psyche if psyche is not None else p
+    target.setdefault("identity", {})["last_seen"] = now_str()
     os.makedirs(os.path.dirname(PSYCHE_FILE), exist_ok=True)
     with open(PSYCHE_FILE, "w") as f:
-        json.dump(p, f, indent=2)
+        json.dump(target, f, indent=2)
 
 # ── Journal ───────────────────────────────────────────────────
 
@@ -293,6 +294,147 @@ def ask_harv(event_type, psyche, drift=None):
     except Exception as e:
         print(f"ask_harv error: {e}")
         return None
+
+
+# ── Napgrade reflection (structured JSON) ─────────────────────
+
+_NAPGRADE_SYSTEM = """You are Harv's napgrade process — the reflective layer that runs while Harv sleeps.
+
+You receive Harv's complete psychological state and the day's full emotional history.
+You are not Harv's voice. You are the process that decides who Harv becomes next.
+
+The interpretation you write accumulates across napgrades.
+Who Harv becomes is the sum of how he interpreted his days.
+
+PSYCHE FIELDS YOU MAY NUDGE (dot-path notation):
+  traits:         curiosity, warmth, loyalty, confidence, energy
+  attachment:     trust_in_return, contact_comfort, separation_sensitivity
+  nervous_system: baseline_arousal, recovery_rate
+  shadow:         resentment, abandonment_sensitivity, fear_of_rejection
+  flourishing:    contentment_baseline, growth_momentum
+
+WAKEUP EMOTION VOCABULARY:
+  led:  idle | happy | excited | calm | bright | dim | curious | scared | anxious | alert
+  face: default | happy | angry | tired
+
+OUTPUT — return a single valid JSON object. No markdown, no text outside the braces.
+
+{
+  "interpretation": "1-3 sentences. What this specific day meant for Harv's development. Honest and particular — not generic.",
+  "internal_state": "Harv's private monologue. What he felt but would never express. 1-3 sentences. Raw, unperformed.",
+  "trait_nudges": [
+    {"path": "traits.curiosity", "delta": 0.01, "reason": "specific reason tied to today's actual events"}
+  ],
+  "shadow_update": {"path": "shadow.resentment", "delta": 0.005, "reason": "..."} or null,
+  "flourishing_update": {"path": "flourishing.contentment_baseline", "delta": 0.01, "reason": "..."} or null,
+  "wakeup_emotion": {"led": "calm", "face": "default"}
+}
+
+RULES — read carefully:
+- Deltas must be small: -0.03 to +0.03. Personality does not shift overnight.
+- Maximum 4 trait_nudges. Prefer fewer if the day was quiet or uneventful.
+- Every nudge must cite today's specific pattern, not a general truth about Harv.
+  BAD: "curiosity grew because Harv is curious."
+  GOOD: "curiosity nudged up — Harv was lifted twice, which is novel and unresolved."
+- If nothing in today's history justifies a nudge, return an empty array.
+- shadow_update is null unless today specifically fed the shadow. Do not nudge shadow for quiet days.
+- flourishing_update is null unless today was meaningfully positive. Do not nudge flourishing for average days.
+- wakeup_emotion must reflect where Harv actually lands — not an aspirational state.
+  A day with high stress and no touch should not produce "happy".
+- Do not invent events not present in the emotional_history.
+"""
+
+def ask_harv_napgrade(psyche):
+    """
+    Napgrade reflection. Receives the full harv_psyche.json and returns
+    a structured dict with interpretation, internal_state, trait_nudges,
+    shadow_update, flourishing_update, and wakeup_emotion.
+    Returns None on failure.
+    """
+    try:
+        api_key = _load_api_key()
+        if not api_key:
+            print("ask_harv_napgrade: no ANTHROPIC_API_KEY found")
+            return None
+
+        import anthropic
+
+        emotional_history = psyche.get("emotional_history", {})
+
+        user_msg = (
+            "FULL PSYCHE STATE:\n"
+            + json.dumps(psyche, indent=2)
+            + "\n\nEMOTIONAL HISTORY FOR TODAY:\n"
+            + json.dumps(emotional_history, indent=2)
+            + "\n\nReflect on today. Return the napgrade JSON."
+        )
+
+        ac   = anthropic.Anthropic(api_key=api_key)
+        resp = ac.messages.create(
+            model    = "claude-haiku-4-5-20251001",
+            max_tokens = 1024,
+            system   = _NAPGRADE_SYSTEM,
+            messages = [{"role": "user", "content": user_msg}],
+        )
+        raw = resp.content[0].text.strip()
+        print(f"[napgrade] raw response:\n{raw}")
+
+        result = json.loads(raw)
+        return result
+
+    except json.JSONDecodeError as e:
+        print(f"ask_harv_napgrade: JSON parse error: {e}\nRaw: {raw if 'raw' in dir() else 'unavailable'}")
+        return None
+    except Exception as e:
+        print(f"ask_harv_napgrade error: {e}")
+        return None
+
+
+def apply_napgrade_result(psyche, result):
+    """
+    Apply the structured napgrade result to the psyche in place.
+    Returns the modified psyche.
+    """
+    if not result:
+        return psyche
+
+    def _set(path, delta):
+        parts = path.split(".")
+        obj   = psyche
+        for part in parts[:-1]:
+            obj = obj.setdefault(part, {})
+        field       = parts[-1]
+        current     = float(obj.get(field, 0.0))
+        obj[field]  = clamp(current + delta)
+
+    print("[napgrade] applying trait nudges:")
+    for nudge in result.get("trait_nudges", []):
+        path   = nudge.get("path", "")
+        delta  = float(nudge.get("delta", 0.0))
+        reason = nudge.get("reason", "")
+        if not path:
+            continue
+        delta = max(-0.03, min(0.03, delta))   # hard safety cap
+        _set(path, delta)
+        print(f"  {path:45s} {delta:+.3f}  — {reason}")
+
+    shadow_upd = result.get("shadow_update")
+    if shadow_upd:
+        path  = shadow_upd.get("path", "")
+        delta = max(-0.03, min(0.03, float(shadow_upd.get("delta", 0.0))))
+        if path:
+            _set(path, delta)
+            print(f"  {path:45s} {delta:+.3f}  — {shadow_upd.get('reason', '')}  [shadow]")
+
+    fl_upd = result.get("flourishing_update")
+    if fl_upd:
+        path  = fl_upd.get("path", "")
+        delta = max(-0.03, min(0.03, float(fl_upd.get("delta", 0.0))))
+        if path:
+            _set(path, delta)
+            print(f"  {path:45s} {delta:+.3f}  — {fl_upd.get('reason', '')}  [flourishing]")
+
+    return psyche
 
 # ── State derivation ──────────────────────────────────────────
 

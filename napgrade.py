@@ -1,14 +1,13 @@
 import json
 import os
 import time
-import random
 import paho.mqtt.client as mqtt
-from harv_brain import ask_harv, log_journal_entry
+from harv_brain import (
+    ask_harv, ask_harv_napgrade, apply_napgrade_result,
+    log_journal_entry, load_psyche, save_psyche,
+    PSYCHE_FILE, JOURNAL_DIR,
+)
 
-MEMORY_FILE  = "/home/admin/harv_memory.json"
-DRIFT_FILE   = "/home/admin/psyche/drift.json"
-RAISING_FILE = "/home/admin/psyche/raising_log.json"
-JOURNAL_DIR  = "/home/admin/psyche/journal"
 NAPGRADE_LOG = "/home/admin/psyche/napgrade_log.json"
 
 NAPGRADES_PER_AGE = 16
@@ -144,47 +143,95 @@ def reset_drift(drift, psyche):
 def run_napgrade():
     print("\n=== NAPGRADE STARTING ===\n")
 
-    psyche  = load_json(MEMORY_FILE,  {})
-    drift   = load_json(DRIFT_FILE,   {})
-    raising = load_json(RAISING_FILE, {})
+    # Load the canonical psyche (harv_brain format)
+    psyche  = load_psyche()
+    traits  = psyche.setdefault("traits", {})
+    state   = psyche.setdefault("state", {})
+    fl      = psyche.setdefault("flourishing", {})
 
-    write_journal(psyche, drift, raising)
-    psyche = process_growth(psyche, raising, drift)
-    raising = reset_raising(raising)
-    drift   = reset_drift(drift, psyche)
+    # ── Step 1: LLM reflection ────────────────────────────────
+    print("[napgrade] asking LLM for reflection...")
+    result = ask_harv_napgrade(psyche)
 
-    psyche["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    # ── Step 2: Apply trait nudges from reflection ────────────
+    if result:
+        psyche = apply_napgrade_result(psyche, result)
 
-    save_json(MEMORY_FILE,  psyche)
-    save_json(DRIFT_FILE,   drift)
-    save_json(RAISING_FILE, raising)
+    # ── Step 3: Mechanical bookkeeping (non-LLM) ──────────────
+    # Energy recovers to a healthy baseline regardless of the day
+    traits["energy"]    = clamp(traits.get("energy", 0.55) + 0.08, 0.15, 0.85)
 
-    print("\n=== NAPGRADE COMPLETE ===")
-    print(f"Napgrades: {psyche['napgrades']}")
-    print(f"Maturity:  {psyche['maturity']:.2f}")
-    print(f"Confidence:{psyche['confidence']:.2f}")
-    print(f"Curiosity: {psyche['curiosity']:.2f}")
-    print(f"Baseline:  {drift['baseline_drift']}")
+    # Napgrade counter and maturity milestone
+    traits["napgrades"] = traits.get("napgrades", 0) + 1
+    if traits["napgrades"] % NAPGRADES_PER_AGE == 0:
+        traits["maturity"] = clamp(traits.get("maturity", 0.20) + 0.05)
+        print(f"  AGE UNIT reached — maturity now {traits['maturity']:.2f}")
 
-    # Publish wakeup payload to WROVER
-    wakeup = {
-        "energy":     psyche.get("energy", 0.55),
-        "warmth":     psyche.get("warmth", 0.68),
-        "curiosity":  psyche.get("curiosity", 0.72),
-        "confidence": psyche.get("confidence", 0.48),
-        "maturity":   psyche.get("maturity", 0.20),
-        "baseline":   drift.get("baseline_drift", "idle"),
-        "napgrades":  psyche.get("napgrades", 0)
+    # ── Step 4: Journal ───────────────────────────────────────
+    if result:
+        interpretation = result.get("interpretation", "")
+        internal_state = result.get("internal_state", "")
+        if interpretation:
+            print(f"\n[interpretation] {interpretation}")
+            log_journal_entry("interpretation", interpretation)
+        if internal_state:
+            print(f"[internal_state] {internal_state}")
+            log_journal_entry("internal_state", internal_state)   # logged, never broadcast
+
+    # ── Step 5: Reset daily emotional history ─────────────────
+    psyche["emotional_history"] = {
+        "touch_events":          0,
+        "stress_events":         0,
+        "homecomings":           0,
+        "presence_minutes":      0,
+        "rough_handling_events": 0,
     }
+    state["greeted_today"]       = False
+    state["homecoming_detected"] = False
+
+    save_psyche()
+
+    # ── Step 6: Print summary ─────────────────────────────────
+    print("\n=== NAPGRADE COMPLETE ===")
+    print(f"  Napgrades:  {traits.get('napgrades', 0)}")
+    print(f"  Maturity:   {traits.get('maturity',  0.20):.2f}")
+    print(f"  Confidence: {traits.get('confidence',0.48):.2f}")
+    print(f"  Curiosity:  {traits.get('curiosity', 0.72):.2f}")
+    print(f"  Warmth:     {traits.get('warmth',    0.68):.2f}")
+    print(f"  Energy:     {traits.get('energy',    0.55):.2f}")
+
+    # ── Step 7: Publish wakeup to firmware ────────────────────
+    # Derive baseline mood from valence and traits
+    warmth_val = traits.get("warmth", 0.68)
+    energy_val = traits.get("energy", 0.55)
+    if energy_val < 0.25:
+        baseline = "dim"
+    elif warmth_val > 0.75:
+        baseline = "warm"
+    else:
+        baseline = "idle"
+
+    wakeup = {
+        "energy":     round(traits.get("energy",     0.55), 3),
+        "warmth":     round(traits.get("warmth",     0.68), 3),
+        "curiosity":  round(traits.get("curiosity",  0.72), 3),
+        "confidence": round(traits.get("confidence", 0.48), 3),
+        "maturity":   round(traits.get("maturity",   0.20), 3),
+        "baseline":   baseline,
+        "napgrades":  traits.get("napgrades", 0),
+    }
+
+    # wakeup_emotion from the LLM — how Harv wakes up tomorrow
+    wakeup_emotion = (result or {}).get("wakeup_emotion", {"led": "idle", "face": "default"})
+
     mqttc = mqtt.Client()
     mqttc.connect("localhost", 1883, 60)
     mqttc.publish("harv/wakeup", json.dumps(wakeup))
+    mqttc.publish("harv/emotion", json.dumps(wakeup_emotion))
     mqttc.disconnect()
-    print(f"Wakeup published: {wakeup}")
 
-    resp = ask_harv("napgrade_wakeup", psyche, drift)
-    if resp:
-        log_journal_entry("napgrade_wakeup", resp)
+    print(f"  Wakeup:       {wakeup}")
+    print(f"  Wakeup emotion: {wakeup_emotion}")
 
 if __name__ == "__main__":
     run_napgrade()

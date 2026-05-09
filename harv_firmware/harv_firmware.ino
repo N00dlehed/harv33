@@ -21,6 +21,7 @@
 #include "mqtt.h"
 #include "imu.h"
 #include "led.h"
+#include "buzzer.h"
 #include "cloud.h"
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -91,21 +92,26 @@ void applyMood(const String& mood) {
   if (mood == "excited") {
     roboEyes.anim_confused();
     _schedule(200, _faceHappy);
+    Buzzer::excited();
   } else if (mood == "happy") {
     roboEyes.setMood(HAPPY);
     roboEyes.anim_laugh();
+    Buzzer::happy();
   } else if (mood == "calm") {
     roboEyes.setMood(DEFAULT);
   } else if (mood == "scared") {
     roboEyes.setMood(TIRED);
     _schedule(800, _faceDefault);
+    Buzzer::scared();
   } else if (mood == "curious") {
     roboEyes.setPosition(3);
     _schedule(400, _facePos7);
     _schedule(800, _facePos0);
+    Buzzer::curious();
   } else if (mood == "alert") {
     roboEyes.anim_confused();
     _schedule(400, _faceDefault);
+    Buzzer::alert();
   } else if (mood == "dim") {
     roboEyes.setMood(TIRED);
   } else if (mood == "bright") {
@@ -193,6 +199,7 @@ void setup() {
   Touch::begin();
   IMU::begin();
   LED::begin();
+  Buzzer::begin();
 
   LED::setState("dim");
 
@@ -224,6 +231,7 @@ void setup() {
   Serial.println("Harv online");
   Serial.println(Psyche::summary());
   MQTT::publish("harv/status", "online");
+  Buzzer::boot();
 }
 
 // ── Loop ─────────────────────────────────────────────────────
@@ -234,6 +242,7 @@ void loop() {
 
   roboEyes.update();
   LED::update();
+  Buzzer::update();
   MQTT::loop();
   Cloud::update();
 
@@ -243,6 +252,7 @@ void loop() {
     Psyche::onTouch();
     debugState("touch");
     LED::setState("happy");
+    Buzzer::chirp();
     MQTT::publish("harv/touch", "1");
     if (Psyche::currentWarmth() > 0.65) {
       roboEyes.anim_confused();
@@ -275,6 +285,7 @@ void loop() {
   if (tapped) {
     debugState("tapped");
     roboEyes.close();
+    Buzzer::tap();
     MQTT::publish("harv/motion", "tapped");
     _schedule(80,  _faceOpen);
     _schedule(300, _restoreLED);

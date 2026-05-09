@@ -1,0 +1,1 @@
+arduino-cli compile --fqbn esp32:esp32:uPesy_wroom:UploadSpeed=921600,CPUFreq=240,FlashFreq=80,FlashMode=qio,PartitionScheme=min_spiffs,DebugLevel=none,EraseFlash=none harv_firmware; arduino-cli upload -p COM3 --fqbn esp32:esp32:uPesy_wroom:UploadSpeed=921600,CPUFreq=240,FlashFreq=80,FlashMode=qio,PartitionScheme=min_spiffs,DebugLevel=none,EraseFlash=none harv_firmware

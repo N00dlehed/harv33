@@ -20,6 +20,7 @@ DoubleResetDetector* drd = nullptr;
 
 void applyMood(const String& mood);
 void handleEmotion(const String& json);
+namespace Buzzer { void playNamed(const String& name); }
 
 // ── Credential wipe ───────────────────────────────────────────
 
@@ -106,6 +107,9 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   if (t == "harv/emotion") {
     handleEmotion(msg);
   }
+  if (t == "harv/buzzer") {
+    Buzzer::playNamed(msg);
+  }
 }
 
 // ── MQTT namespace ────────────────────────────────────────────
@@ -120,6 +124,7 @@ namespace MQTT {
     mqtt.subscribe("harv/wakeup");
     mqtt.subscribe("harv/cmd");
     mqtt.subscribe("harv/emotion");
+    mqtt.subscribe("harv/buzzer");
   }
 
   // Reconnect MQTT only — assumes WiFi is already up.

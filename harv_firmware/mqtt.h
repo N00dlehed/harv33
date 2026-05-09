@@ -93,7 +93,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
   if (t == "harv/event") {
     if (msg == "homecoming") {
-      HarvSound::soundHomecoming();
+      HarvSound::playNamed("homecoming");
       applyMood("excited");
       delay(200);
       applyMood("happy");

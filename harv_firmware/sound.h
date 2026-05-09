@@ -5,8 +5,7 @@
 // Non-blocking: play queues a note sequence; update() advances it.
 // Call begin() in setup(), update() every loop iteration.
 
-#define HARVSOUND_PIN     25
-#define HARVSOUND_CHANNEL 0
+#define HARVSOUND_PIN 25
 
 namespace HarvSound {
 
@@ -21,15 +20,15 @@ namespace HarvSound {
   // ── Core ─────────────────────────────────────────────────────
 
   void silence() {
-    ledcWrite(HARVSOUND_CHANNEL, 0);
+    ledcWrite(HARVSOUND_PIN, 0);
     _playing = false;
   }
 
   void _startNote(uint8_t i) {
     if (_seq[i].freq == 0) {
-      ledcWrite(HARVSOUND_CHANNEL, 0);          // rest
+      ledcWrite(HARVSOUND_PIN, 0);              // rest
     } else {
-      ledcWriteTone(HARVSOUND_CHANNEL, _seq[i].freq);
+      ledcWriteTone(HARVSOUND_PIN, _seq[i].freq);
     }
     _noteEnd = millis() + _seq[i].dur;
     _seqIdx  = i;
@@ -51,9 +50,8 @@ namespace HarvSound {
   }
 
   void begin() {
-    ledcSetup(HARVSOUND_CHANNEL, 2000, 8);
-    ledcAttachPin(HARVSOUND_PIN, HARVSOUND_CHANNEL);
-    ledcWrite(HARVSOUND_CHANNEL, 0);
+    ledcAttach(HARVSOUND_PIN, 2000, 8);
+    ledcWrite(HARVSOUND_PIN, 0);
   }
 
   void update() {

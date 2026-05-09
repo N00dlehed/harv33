@@ -20,7 +20,7 @@ DoubleResetDetector* drd = nullptr;
 
 void applyMood(const String& mood);
 void handleEmotion(const String& json);
-namespace Buzzer { void playNamed(const String& name); }
+namespace HarvSound { void playNamed(const String& name); }
 
 // ── Credential wipe ───────────────────────────────────────────
 
@@ -93,6 +93,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
   if (t == "harv/event") {
     if (msg == "homecoming") {
+      HarvSound::soundHomecoming();
       applyMood("excited");
       delay(200);
       applyMood("happy");
@@ -108,7 +109,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     handleEmotion(msg);
   }
   if (t == "harv/buzzer") {
-    Buzzer::playNamed(msg);
+    HarvSound::playNamed(msg);
   }
 }
 

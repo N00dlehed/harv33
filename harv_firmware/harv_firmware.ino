@@ -21,7 +21,7 @@
 #include "mqtt.h"
 #include "imu.h"
 #include "led.h"
-#include "buzzer.h"
+#include "sound.h"
 #include "cloud.h"
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -92,33 +92,36 @@ void applyMood(const String& mood) {
   if (mood == "excited") {
     roboEyes.anim_confused();
     _schedule(200, _faceHappy);
-    Buzzer::excited();
+    HarvSound::soundHappy();
   } else if (mood == "happy") {
     roboEyes.setMood(HAPPY);
     roboEyes.anim_laugh();
-    Buzzer::happy();
+    HarvSound::soundHappy();
   } else if (mood == "calm") {
     roboEyes.setMood(DEFAULT);
   } else if (mood == "scared") {
     roboEyes.setMood(TIRED);
     _schedule(800, _faceDefault);
-    Buzzer::scared();
+    HarvSound::soundSad();
   } else if (mood == "curious") {
     roboEyes.setPosition(3);
     _schedule(400, _facePos7);
     _schedule(800, _facePos0);
-    Buzzer::curious();
+    HarvSound::soundCurious();
   } else if (mood == "alert") {
     roboEyes.anim_confused();
     _schedule(400, _faceDefault);
-    Buzzer::alert();
+    HarvSound::soundStressed();
   } else if (mood == "dim") {
     roboEyes.setMood(TIRED);
+    HarvSound::soundSleepy();
   } else if (mood == "bright") {
     roboEyes.setMood(HAPPY);
     _schedule(600, _faceDefault);
+    HarvSound::soundHappy();
   } else if (mood == "anxious") {
     roboEyes.setMood(ANGRY);
+    HarvSound::soundAnxious();
   }
 }
 
@@ -199,7 +202,7 @@ void setup() {
   Touch::begin();
   IMU::begin();
   LED::begin();
-  Buzzer::begin();
+  HarvSound::begin();
 
   LED::setState("dim");
 
@@ -231,7 +234,7 @@ void setup() {
   Serial.println("Harv online");
   Serial.println(Psyche::summary());
   MQTT::publish("harv/status", "online");
-  Buzzer::boot();
+  HarvSound::soundBoot();
 }
 
 // ── Loop ─────────────────────────────────────────────────────
@@ -242,7 +245,7 @@ void loop() {
 
   roboEyes.update();
   LED::update();
-  Buzzer::update();
+  HarvSound::update();
   MQTT::loop();
   Cloud::update();
 
@@ -252,7 +255,7 @@ void loop() {
     Psyche::onTouch();
     debugState("touch");
     LED::setState("happy");
-    Buzzer::chirp();
+    HarvSound::soundTouch();
     MQTT::publish("harv/touch", "1");
     if (Psyche::currentWarmth() > 0.65) {
       roboEyes.anim_confused();
@@ -285,7 +288,7 @@ void loop() {
   if (tapped) {
     debugState("tapped");
     roboEyes.close();
-    Buzzer::tap();
+    HarvSound::soundTouch();
     MQTT::publish("harv/motion", "tapped");
     _schedule(80,  _faceOpen);
     _schedule(300, _restoreLED);

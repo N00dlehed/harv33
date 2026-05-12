@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import random
 import threading
 import time
 
@@ -480,6 +481,87 @@ def publish_drift(client):
     client.publish("harv/drift", json.dumps(payload))
     print(f"Drift: {payload}")
 
+# ── Reactivity tables ─────────────────────────────────────────
+
+TOUCH_RESPONSES = {
+    "bright":  ["excited", "playful", "playful", "giddy"],
+    "idle":    ["happy", "content", "curious", "pleased"],
+    "anxious": ["relieved", "settled", "calm", "cautious"],
+    "dim":     ["stirring", "warming", "soft", "slow"],
+}
+HOMECOMING_TOUCH = ["warm", "relieved", "glad", "noticed"]
+HIGH_TOUCH_BURST = ["thrilled", "giddy", "playful", "excited"]
+
+MOTION_RESPONSES = {
+    "shaken": {
+        "anxious": ["scared", "panicked", "distressed"],
+        "bright":  ["startled", "scared", "shaken"],
+        "idle":    ["scared", "startled", "unsettled"],
+        "dim":     ["scared", "tense", "unsettled"],
+    },
+    "lifted": {
+        "bright":  ["excited", "playful", "curious"],
+        "idle":    ["curious", "alert", "interested"],
+        "anxious": ["tense", "curious", "wary"],
+        "dim":     ["stirring", "curious", "slow"],
+    },
+    "tapped": {
+        "bright":  ["perky", "alert", "attentive"],
+        "idle":    ["alert", "attentive", "curious"],
+        "anxious": ["startled", "alert", "tense"],
+        "dim":     ["stirring", "slow", "alert"],
+    },
+}
+
+IDLE_BEHAVIORS = {
+    "bright":  ["look_around", "perky", "chirp", "wiggle"],
+    "idle":    ["fidget", "blink_slow", "settle", "doze_light"],
+    "anxious": ["watch", "tense", "alert", "pace"],
+    "dim":     ["doze", "still", "quiet", "dim_pulse"],
+}
+IDLE_TRIGGER_CHANCE   = 0.6
+IDLE_MIN_ALONE_MINS   = 2
+
+def pick_touch_mood():
+    """Choose a varied mood response to touch based on current psyche context."""
+    s    = p["state"]
+    eh   = p["emotional_history"]
+    state = s["current_state"]
+
+    if minutes_since(s["last_interaction"]) >= HOMECOMING_QUIET_MINUTES:
+        return random.choice(HOMECOMING_TOUCH)
+
+    if eh.get("touch_events", 0) > 8 and state == "bright":
+        return random.choice(HIGH_TOUCH_BURST)
+
+    pool = TOUCH_RESPONSES.get(state, TOUCH_RESPONSES["idle"])
+
+    # High valence pushes toward the more animated end of the pool
+    if s["valence"] > 0.75 and len(pool) > 1:
+        pool = pool[:2]
+
+    return random.choice(pool)
+
+def pick_motion_mood(motion_type):
+    """Choose a varied mood response to a motion event."""
+    state = p["state"]["current_state"]
+    by_state = MOTION_RESPONSES.get(motion_type, {})
+    pool = by_state.get(state, by_state.get("idle", ["alert"]))
+    return random.choice(pool)
+
+def maybe_idle_behavior(client):
+    """Called from the presence tick. Emit a spontaneous idle behavior when undisturbed."""
+    s = p["state"]
+    if minutes_since(s["last_interaction"]) < IDLE_MIN_ALONE_MINS:
+        return
+    if random.random() > IDLE_TRIGGER_CHANCE:
+        return
+    state    = s["current_state"]
+    pool     = IDLE_BEHAVIORS.get(state, IDLE_BEHAVIORS["idle"])
+    behavior = random.choice(pool)
+    client.publish("harv/idle", behavior)
+    print(f"Idle: {behavior}  (state={state})")
+
 # ── Event handlers ────────────────────────────────────────────
 
 def detect_homecoming():
@@ -531,14 +613,10 @@ def on_touch(client):
     publish_psyche(client)
     publish_drift(client)
 
-    if s["valence"] > 0.75:
-        client.publish("harv/mood", "excited")
-    elif s["valence"] > 0.5:
-        client.publish("harv/mood", "happy")
-    else:
-        client.publish("harv/mood", "calm")
+    mood = pick_touch_mood()
+    client.publish("harv/mood", mood)
 
-    print(f"Touch #{eh['touch_events']}. State: {s['current_state']}")
+    print(f"Touch #{eh['touch_events']}  mood={mood}  state={s['current_state']}")
 
 def on_motion(client, motion_type):
     s  = p["state"]
@@ -559,18 +637,19 @@ def on_motion(client, motion_type):
         sm["startle_conditioning"]    = clamp(sm["startle_conditioning"]    + 0.02)
         sh["resentment"]              = clamp(sh["resentment"]              + 0.005)
         cl["anxiety_index"]           = clamp(cl["anxiety_index"]           + 0.005)
-        client.publish("harv/mood", "scared")
         print("Stress event: shaken")
 
     elif motion_type == "lifted":
         s["arousal"]           = clamp(s["arousal"]           + 0.20)
         d["exploration_drive"] = clamp(d["exploration_drive"] - 0.10)
-        client.publish("harv/mood", "curious")
         print("Warmth event: lifted")
 
     elif motion_type == "tapped":
-        client.publish("harv/mood", "alert")
         print("Motion: tapped")
+
+    mood = pick_motion_mood(motion_type)
+    client.publish("harv/mood", mood)
+    print(f"Motion mood: {mood}")
 
     update_current_state()
     save_psyche()
@@ -604,6 +683,7 @@ def on_presence_tick(client):
     update_current_state()
     save_psyche()
     publish_drift(client)
+    maybe_idle_behavior(client)
 
 # ── Simulated events ──────────────────────────────────────────
 

@@ -120,7 +120,7 @@ def load_psyche():
     return copy.deepcopy(DEFAULT_PSYCHE)
 
 def save_psyche(psyche=None):
-    target = psyche if psyche is not None else p
+    target = psyche if psyche is not None else globals().get("p")
     target.setdefault("identity", {})["last_seen"] = now_str()
     os.makedirs(os.path.dirname(PSYCHE_FILE), exist_ok=True)
     with open(PSYCHE_FILE, "w") as f:
@@ -378,6 +378,12 @@ def ask_harv_napgrade(psyche):
             messages = [{"role": "user", "content": user_msg}],
         )
         raw = resp.content[0].text.strip()
+        # Strip markdown code fences if the model wrapped the JSON
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
         print(f"[napgrade] raw response:\n{raw}")
 
         result = json.loads(raw)

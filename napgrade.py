@@ -189,7 +189,7 @@ def run_napgrade():
     state["greeted_today"]       = False
     state["homecoming_detected"] = False
 
-    save_psyche()
+    save_psyche(psyche)
 
     # ── Step 6: Print summary ─────────────────────────────────
     print("\n=== NAPGRADE COMPLETE ===")

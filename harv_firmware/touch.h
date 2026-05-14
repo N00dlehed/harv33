@@ -1,7 +1,7 @@
 #pragma once
 
 #define TOUCH_PIN        T0   // GPIO 4
-#define TOUCH_THRESHOLD  40
+#define TOUCH_THRESHOLD  65
 #define TOUCH_COOLDOWN   1200 // ms between touch events
 
 namespace Touch {

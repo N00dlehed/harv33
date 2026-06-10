@@ -1,4 +1,6 @@
-# Harv — Firmware
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Harv is an emotional robot companion built on an ESP32. It has animated OLED eyes, a breathing NeoPixel, a passive piezo buzzer, touch sensing, motion detection (IMU), and connects to MQTT + Arduino IoT Cloud.
 
@@ -31,10 +33,18 @@ harv_firmware/
   touch.h             Capacitive touch polling
   imu.h               MPU6050 — lifted / shaken / tapped detection
   led.h               NeoPixel breathing + mood colours (namespace LED)
-  buzzer.h            Passive buzzer note sequencer (namespace Buzzer)
+  sound.h             Passive buzzer note sequencer (namespace HarvSound)
   mqtt.h              WiFiManager, MQTT connect/subscribe/publish, OTA double-reset
   cloud.h             Arduino IoT Cloud properties + callbacks
   cloud_secrets.h     Device credentials — gitignored, never commit
+
+harv_brain.py         Host-side psyche daemon — MQTT listener, emotional processing, LLM voice
+napgrade.py           Napgrade runner — LLM reflection + trait nudges + wakeup publish
+harv_monitor.py       Live terminal dashboard for all harv/* MQTT traffic
+super_reset.py        Wipes harv_psyche.json back to DEFAULT_PSYCHE (destructive, confirms)
+
+flash.ps1             Serial compile+upload via arduino-cli
+flash_ota.ps1         OTA compile+upload via espota
 ```
 
 ---
@@ -58,24 +68,47 @@ Compiles, then uploads to `10.0.0.69` via espota. Falls back to `espota.py` dire
 
 ---
 
+## Python Host Scripts
+
+All Python scripts run on the host machine (not the ESP32) and communicate with the firmware via an MQTT broker at `localhost:1883`.
+
+```bash
+python harv_brain.py      # Start the always-on psyche daemon
+python harv_monitor.py    # Live MQTT dashboard (read-only)
+python napgrade.py        # Run a napgrade cycle (LLM reflection + trait nudges)
+python super_reset.py     # Destructive: reset harv_psyche.json to defaults
+```
+
+**Dependencies:** `paho-mqtt`, `anthropic` (for `harv_brain.py` / `napgrade.py`).
+
+**API key:** `harv_brain.py` reads `ANTHROPIC_API_KEY` from `~/.env` (line `ANTHROPIC_API_KEY=...`) or the environment.
+
+**Psyche file:** `~/psyche/harv_psyche.json` — the canonical persistent state. `napgrade.py` imports from `harv_brain.py`, so both must be on the same Python path.
+
+---
+
 ## MQTT Topics
 
 | Topic | Direction | Payload | Effect |
 |---|---|---|---|
 | `harv/mood` | → device | mood name | `applyMood()` |
 | `harv/emotion` | → device | `{"led":"happy","face":"happy"}` | fine-grained LED + face control |
-| `harv/drift` | → device | string containing `bright`/`dim`/`anxious` | `applyMood()` |
+| `harv/drift` | → device | JSON state snapshot | `applyMood()` via drift detection |
 | `harv/event` | → device | `homecoming` | excited → happy sequence |
 | `harv/wakeup` | → device | JSON psyche state | restores Psyche values after napgrade |
 | `harv/buzzer` | → device | sound name | plays named buzzer sound |
-| `harv/cmd` | → device | `reset_wifi` | wipes WiFi credentials and re-provisions |
+| `harv/cmd` | → device | `reset_wifi` / `run_napgrade` | WiFi wipe or napgrade trigger |
 | `harv/touch` | device → | `1` | touch event |
 | `harv/motion` | device → | `lifted` / `shaken` / `tapped` | motion event |
 | `harv/status` | device → | `online` | boot confirmation |
 | `harv/debug` | device → | JSON | full psyche + mood state snapshot |
+| `harv/psyche` | brain → | JSON trait snapshot | published by `harv_brain.py` on events |
+| `harv/idle` | brain → | behavior name | spontaneous idle behavior from brain |
+| `harv/sim/touch` | → brain | — | simulates a touch event |
+| `harv/sim/pet` | → brain | — | simulates 10 touches × 3s |
 
 ### Buzzer sound names (harv/buzzer)
-`boot` `chirp` `happy` `excited` `sad` `scared` `alert` `tap` `curious` `off`
+`boot` `touch` `homecoming` `happy` `anxious` `sad` `stressed` `curious` `sleepy` `wakeup` `off`
 
 ---
 
@@ -98,8 +131,9 @@ Moods affect LED colour/breathing, eye expression, and buzzer sound simultaneous
 
 ---
 
-## Psyche Model
+## Psyche Model — Two Layers
 
+### Firmware (psyche.h)
 Five floats in `namespace Psyche`, all clamped 0–1:
 
 - **energy** — decays every 5 s; touch restores slightly
@@ -110,7 +144,19 @@ Five floats in `namespace Psyche`, all clamped 0–1:
 
 `isSleepy()` → true when `energy < 0.25` → dim eyes + LED in idle.
 
-Psyche is restored after a "napgrade" via the `harv/wakeup` MQTT topic with a JSON payload of all five values plus `baseline`.
+### Brain (harv_brain.py / harv_psyche.json)
+Rich multi-namespace model persisted to `~/psyche/harv_psyche.json`. Top-level keys:
+
+`state` `nervous_system` `attachment` `drives` `emotional_history` `traits` `shadow` `somatic` `clinical` `flourishing` `identity`
+
+`traits` mirrors the firmware's five floats (energy, warmth, curiosity, confidence, maturity) plus `napgrades`. After a napgrade, `napgrade.py` publishes these to `harv/wakeup` so the firmware syncs.
+
+The napgrade cycle (triggered manually or via `harv/cmd` → `run_napgrade`):
+1. LLM reflection via `ask_harv_napgrade()` (claude-haiku) → structured JSON with trait nudges
+2. `apply_napgrade_result()` applies nudges (capped ±0.03 per field)
+3. Mechanical bookkeeping: energy recovery, napgrade counter, maturity milestone every 16 napgrades
+4. Journal entry written to `~/psyche/journal/YYYY-MM-DD.txt`
+5. Publish `harv/wakeup` + `harv/emotion` to sync firmware
 
 ---
 
@@ -120,7 +166,10 @@ Psyche is restored after a "napgrade" via the `harv/wakeup` MQTT topic with a JS
 `_schedule(msFromNow, callback)` in the main sketch replaces all `delay()` calls. Callbacks fire from `_runPending()` at the top of `loop()`. Slot count: 12.
 
 ### Namespace modules
-Each subsystem lives in a `namespace` inside its `.h` file (LED, IMU, Buzzer, MQTT, Cloud, Psyche). Globals are declared at file scope; `begin()` / `update()` are the standard entry points.
+Each subsystem lives in a `namespace` inside its `.h` file (LED, IMU, HarvSound, MQTT, Cloud, Psyche). Globals are declared at file scope; `begin()` / `update()` are the standard entry points.
+
+### RoboEyes symbol conflicts
+`FluxGarage_RoboEyes.h` defines `ON`, `OFF`, and compass direction macros that clash with other libraries. They are `#undef`ed immediately after the include in `harv_firmware.ino`.
 
 ### Forward declarations in mqtt.h
 `onMessage()` in `mqtt.h` calls functions defined later in the `.ino`. Add a forward declaration near the top of `mqtt.h` (alongside `applyMood` and `handleEmotion`) rather than reordering files.
@@ -137,4 +186,4 @@ Reset twice within 10 s → wipes NVS WiFi credentials → starts captive portal
 #define SECRET_DEVICE_ID  "..."
 #define SECRET_DEVICE_KEY "..."
 ```
-Copy from the Arduino IoT Cloud device PDF. The example template was at `cloud_secrets.h.example` (now removed from repo).
+Copy from the Arduino IoT Cloud device PDF.

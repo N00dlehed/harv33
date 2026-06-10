@@ -2,7 +2,72 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Harv is an emotional robot companion built on an ESP32. It has animated OLED eyes, a breathing NeoPixel, a passive piezo buzzer, touch sensing, motion detection (IMU), and connects to MQTT + Arduino IoT Cloud.
+Harv is an emotional robot companion split across two ESP32-WROOM boards and a Raspberry Pi. The boards are dumb sensory/motor I/O; the Pi is the brain. They communicate only via MQTT — the boards never talk to each other directly.
+
+---
+
+## Architecture
+
+```
+Input board  ──harv/sensors/──▶  Pi (harv_brain.py)  ──harv/express/──▶  Output board
+ (senses)                          (decides, persists)                      (expresses)
+```
+
+**Input board** — Harv's senses. IMU (lifted/tilted/moved), capacitive touch zones, electret mic. Publishes raw events to `harv/sensors/#`. No decisions.
+
+**Output board** — Harv's expression. OLED face, LED, buzzer (later). Renders whatever it's told. Subscribes to `harv/express/#`. No decisions.
+
+**Pi** — the brain. `harv_brain.py` consumes sensor events, updates psyche state, decides expression, publishes to `harv/express/#`. Identity and memory live here, not in firmware.
+
+Neither board thinks. That is deliberate. The firmware is sensory I/O; the soul lives on the Pi and is refined during napgrade. Swapping to a better Pi or a local LLM touches only `harv_brain.py`.
+
+MQTT is the nervous system. The sense→react path crosses the network twice (board → Pi → board), but on a LAN this is ~5–20 ms — well under human-perceptible reaction time (~150–250 ms).
+
+**Build order:** output board first (visible feedback), then input board, then close the loop on the Pi.
+
+---
+
+## Topic Reference
+
+Direction is from the board's perspective (publishes / subscribes).
+
+### harv/express/# — output board subscribes
+
+| Topic | Direction | Payload |
+|---|---|---|
+| `harv/express/*` | Pi → output board | `{"text": "...", "emotion": "..."}` |
+
+`text` renders on OLED and flashes LED for 500 ms. `emotion` is received but not yet acted on (reserved for future face expressions).
+
+### harv/sensors/# — input board publishes _(planned — board not yet built)_
+
+| Topic | Direction | Payload |
+|---|---|---|
+| `harv/sensors/touch` | input board → Pi | TBD |
+| `harv/sensors/motion` | input board → Pi | TBD — event: `lifted` / `tilted` / `moved` |
+| `harv/sensors/sound` | input board → Pi | TBD — ambient sound level |
+
+### harv/* — legacy monolithic firmware
+
+These topics come from the original single-board `harv_firmware` sketch and `harv_brain.py`. They remain active during the transition to the split architecture.
+
+| Topic | Direction | Payload | Effect |
+|---|---|---|---|
+| `harv/mood` | Pi → device | mood name | `applyMood()` |
+| `harv/emotion` | Pi → device | `{"led":"happy","face":"happy"}` | fine-grained LED + face |
+| `harv/drift` | Pi → device | JSON state snapshot | mood via drift detection |
+| `harv/event` | Pi → device | `homecoming` | excited → happy sequence |
+| `harv/wakeup` | Pi → device | JSON psyche state | restores Psyche after napgrade |
+| `harv/buzzer` | Pi → device | sound name | plays named sound |
+| `harv/cmd` | Pi → device | `reset_wifi` / `run_napgrade` | WiFi wipe or napgrade trigger |
+| `harv/touch` | device → Pi | `1` | touch event |
+| `harv/motion` | device → Pi | `lifted` / `shaken` / `tapped` | motion event |
+| `harv/status` | device → Pi | `online` | boot confirmation |
+| `harv/debug` | device → Pi | JSON | psyche + mood snapshot |
+| `harv/psyche` | Pi → all | JSON trait snapshot | brain publishes on events |
+| `harv/idle` | Pi → all | behavior name | spontaneous idle behavior |
+| `harv/sim/touch` | → brain | — | simulates touch |
+| `harv/sim/pet` | → brain | — | simulates 10 touches × 3 s |
 
 ---
 
